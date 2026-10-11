@@ -2,118 +2,125 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-st.set_page_config(
-    page_title="Sleep Disorder Detection",
-    page_icon="😴",
-    layout="centered"
-)
+# Load the trained model and scaler
+model = joblib.load("sleep_disorder_model.joblib")
+scaler = joblib.load("scaler.joblib")
+
+st.set_page_config(page_title="Sleep Disorder Detection", page_icon="😴")
 
 st.title("😴 Sleep Disorder Detection")
-st.write(
-    "Enter your sleep and lifestyle information "
-    "to explore a machine-learning prediction."
-)
+st.write("Enter your sleep and lifestyle information to receive a model-based prediction.")
 
 st.warning(
-    "Educational project only. This application does not "
-    "provide a medical diagnosis."
+    "Educational project only. This prediction is not a medical diagnosis."
 )
 
-st.header("Personal Information")
+# User inputs
+age = st.number_input("Age", min_value=18, max_value=100, value=30)
 
-age = st.number_input(
-    "Age",
-    min_value=18,
-    max_value=100,
-    value=25
-)
-
-gender = st.selectbox(
-    "Gender",
-    ["Male", "Female"]
-)
+gender = st.selectbox("Gender", ["Male", "Female"])
 
 occupation = st.selectbox(
     "Occupation",
-    [
-        "Student",
-        "Software Engineer",
-        "Doctor",
-        "Nurse",
-        "Teacher",
-        "Other"
-    ]
+    ["Nurse", "Other"]
 )
 
-st.header("Sleep Information")
-
-sleep_duration = st.slider(
+sleep_duration = st.number_input(
     "Average sleep duration (hours)",
-    1.0,
-    14.0,
-    7.0,
-    0.5
-)
-
-quality_of_sleep = st.slider(
-    "Sleep quality (1 = poor, 10 = excellent)",
-    1,
-    10,
-    7
+    min_value=1.0,
+    max_value=14.0,
+    value=7.0
 )
 
 physical_activity = st.slider(
     "Physical activity level",
-    0,
-    100,
-    50
+    min_value=1,
+    max_value=5,
+    value=3
 )
 
-stress_level = st.slider(
-    "Stress level (1 = low, 10 = high)",
-    1,
-    10,
-    5
-)
-
-st.header("Health Information")
+# Convert slider value to the scale used by the original model
+physical_activity = 30 + (physical_activity - 1) * 60 / 4
 
 bmi_category = st.selectbox(
     "BMI category",
-    ["Normal", "Overweight", "Obese"]
+    ["Normal", "Overweight"]
 )
 
 systolic_bp = st.number_input(
     "Systolic blood pressure",
-    min_value=70,
-    max_value=250,
+    min_value=90,
+    max_value=200,
     value=120
 )
 
 diastolic_bp = st.number_input(
     "Diastolic blood pressure",
-    min_value=40,
-    max_value=150,
+    min_value=60,
+    max_value=120,
     value=80
 )
 
-if st.button("Analyze Sleep Information"):
-    st.subheader("Your Submitted Information")
+# Calculate mean arterial pressure
+map_value = (systolic_bp + 2 * diastolic_bp) / 3
 
-    st.write(f"Age: {age}")
-    st.write(f"Gender: {gender}")
-    st.write(f"Occupation: {occupation}")
-    st.write(f"Sleep duration: {sleep_duration} hours")
-    st.write(f"Sleep quality: {quality_of_sleep}/10")
-    st.write(f"Physical activity: {physical_activity}")
-    st.write(f"Stress level: {stress_level}/10")
-    st.write(f"BMI category: {bmi_category}")
-    st.write(
-        f"Blood pressure: {systolic_bp}/{diastolic_bp}"
+if st.button("Analyze Sleep Information"):
+
+    # Prepare input using the original model's expected features
+    user_data = pd.DataFrame({
+        "BMI Category_Normal": [
+            1 if bmi_category == "Normal" else 0
+        ],
+        "BMI Category_Overweight": [
+            1 if bmi_category == "Overweight" else 0
+        ],
+        "Occupation_Nurse": [
+            1 if occupation == "Nurse" else 0
+        ],
+        "Mean Arterial Pressure": [map_value],
+        "Sleep Duration": [sleep_duration],
+        "Age": [age],
+        "Physical Activity Level": [physical_activity],
+    })
+
+    continuous_col = [
+        "Mean Arterial Pressure",
+        "Sleep Duration",
+        "Age",
+        "Physical Activity Level"
+    ]
+
+    binary_col = [
+        "BMI Category_Normal",
+        "BMI Category_Overweight",
+        "Occupation_Nurse"
+    ]
+
+    # Standardize continuous features
+    user_data_std = scaler.transform(user_data[continuous_col])
+
+    df = pd.DataFrame(
+        user_data_std,
+        columns=continuous_col
     )
 
-    st.info(
-        "Your information has been collected successfully. "
-        "A trained prediction model must be connected before "
-        "this application can produce a machine-learning prediction."
+    # Arrange features in the original model's expected order
+    df = pd.concat([user_data[binary_col], df], axis=1)
+
+    # Generate prediction
+    prediction = int(model.predict(df)[0])
+
+    messages = {
+        0: "No sleep disorder predicted by the model.",
+        1: "The model predicts a possible risk of sleep apnea.",
+        2: "The model predicts a possible risk of insomnia."
+    }
+
+    st.subheader("Prediction Result")
+    st.info(messages.get(prediction, f"Model returned class: {prediction}"))
+
+    st.caption(
+        "This is an experimental machine-learning prediction, "
+        "not a confirmed diagnosis. Consult a qualified healthcare "
+        "professional about any sleep-related concerns."
     )
